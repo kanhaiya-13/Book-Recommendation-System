@@ -10,3 +10,5 @@ pandas
 scikit-learn
 flask_mail
 pillow
+boto3
+python-dotenv

@@ -121,7 +121,12 @@ def deletebook():
 
 @app.route("/account")
 def account():
-	image_file = url_for('static', filename='profile_pics/' + current_user.image_file)
+	if current_user.image_file == 'default.jpg':
+		image_file = url_for('static', filename='profile_pics/' + current_user.image_file)
+	else:
+		s3_bucket = os.environ.get('S3_BUCKET_NAME', 'my-book-recommendation-images')
+		s3_region = os.environ.get('S3_REGION_NAME', 'us-east-1')
+		image_file = f"https://{s3_bucket}.s3.{s3_region}.amazonaws.com/{current_user.image_file}"
 	return render_template('account.html', title='Account',image_file=image_file, form=form)
 
 

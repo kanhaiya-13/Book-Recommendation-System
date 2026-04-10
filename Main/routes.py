@@ -9,6 +9,8 @@ import secrets
 import os
 from PIL import Image
 import pandas as pd
+import boto3
+import io
 import numpy as np
 from flask_login import login_user, current_user, logout_user, login_required
 import csv
@@ -144,12 +146,34 @@ def save_picture(form_picture):
 	random_hex=secrets.token_hex(8)
 	f_name, f_ext = os.path.splitext(form_picture.filename)
 	picture_fn = random_hex + f_ext
-	picture_path=os.path.join(app.root_path,'static/profile_pics',picture_fn)
 
+	# Resize image
 	op_size=(125,125)
 	i=Image.open(form_picture)
 	i.thumbnail(op_size)
-	i.save(picture_path)
+	
+	# Save to in-memory bytes
+	in_mem_file = io.BytesIO()
+	# Ensure RGBA is converted to RGB for JPEG format saving
+	if i.mode == 'RGBA' and f_ext.lower() in ['.jpg', '.jpeg']:
+		i = i.convert('RGB')
+	i.save(in_mem_file, format=i.format if i.format else 'JPEG')
+	in_mem_file.seek(0)
+	
+	s3_client = boto3.client(
+		's3',
+		aws_access_key_id=os.environ.get('AWS_ACCESS_KEY_ID'),
+		aws_secret_access_key=os.environ.get('AWS_SECRET_ACCESS_KEY'),
+		region_name=os.environ.get('S3_REGION_NAME', 'us-east-1')
+	)
+	s3_bucket = os.environ.get('S3_BUCKET_NAME', 'my-book-recommendation-images')
+	
+	s3_client.upload_fileobj(
+		in_mem_file,
+		s3_bucket,
+		picture_fn,
+		ExtraArgs={'ContentType': form_picture.content_type}
+	)
 
 	return picture_fn
 
@@ -169,5 +193,12 @@ def account():
 	elif request.method == 'GET':
 		form.username.data=current_user.username
 		form.email.data=current_user.email
-	image_file=url_for('static', filename='profile_pics/'+current_user.image_file)
+		
+	if current_user.image_file == 'default.jpg':
+		image_file=url_for('static', filename='profile_pics/'+current_user.image_file)
+	else:
+		s3_bucket = os.environ.get('S3_BUCKET_NAME', 'my-book-recommendation-images')
+		s3_region = os.environ.get('S3_REGION_NAME', 'us-east-1')
+		image_file = f"https://{s3_bucket}.s3.{s3_region}.amazonaws.com/{current_user.image_file}"
+		
 	return render_template('account.html', title='Account',image_file=image_file, form = form)
